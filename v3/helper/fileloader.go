@@ -2,32 +2,31 @@ package helper
 
 import (
 	"errors"
-	"github.com/tealeg/xlsx"
+	"github.com/davyxu/tabtoy/v3/report"
+	"path/filepath"
 	"sync"
 )
 
 type FileGetter interface {
-	GetFile(filename string) (*xlsx.File, error)
+	GetFile(filename string) (TableFile, error)
 }
 
-type SyncFileLoader struct {
-}
-
-func (SyncFileLoader) GetFile(filename string) (*xlsx.File, error) {
-	return xlsx.OpenFile(filename)
-}
-
-type AsyncFileLoader struct {
+type FileLoader struct {
 	fileByName sync.Map
 	inputFile  []string
+
+	syncLoad bool
+	cacheDir string
+
+	UseGBKCSV bool
 }
 
-func (self *AsyncFileLoader) AddFile(filename string) {
+func (self *FileLoader) AddFile(filename string) {
 
 	self.inputFile = append(self.inputFile, filename)
 }
 
-func (self *AsyncFileLoader) Commit() {
+func (self *FileLoader) Commit() {
 
 	var task sync.WaitGroup
 	task.Add(len(self.inputFile))
@@ -36,13 +35,7 @@ func (self *AsyncFileLoader) Commit() {
 
 		go func(fileName string) {
 
-			file, err := xlsx.OpenFile(fileName)
-
-			if err != nil {
-				self.fileByName.Store(fileName, err)
-			} else {
-				self.fileByName.Store(fileName, file)
-			}
+			self.fileByName.Store(fileName, loadFileByExt(fileName, self.UseGBKCSV, self.cacheDir))
 
 			task.Done()
 
@@ -54,23 +47,72 @@ func (self *AsyncFileLoader) Commit() {
 
 	self.inputFile = self.inputFile[0:0]
 }
-func (self *AsyncFileLoader) GetFile(filename string) (*xlsx.File, error) {
 
-	if value, ok := self.fileByName.Load(filename); ok {
+func loadFileByExt(filename string, useGBKCSV bool, cacheDir string) interface{} {
 
-		switch ret := value.(type) {
-		case *xlsx.File:
-			return ret, nil
-		case error:
-			return nil, ret
-		default:
-			panic("unexpect value")
+	var tabFile TableFile
+	switch filepath.Ext(filename) {
+	case ".xlsx", ".xls", ".xlsm":
+
+		tabFile = NewXlsxFile(cacheDir)
+
+		err := tabFile.Load(filename)
+
+		if err != nil {
+			return err
 		}
-	} else {
-		return nil, errors.New("not found")
+
+	case ".csv":
+		tabFile = NewCSVFile()
+
+		err := tabFile.Load(filename)
+
+		if err != nil {
+			return err
+		}
+
+		// 输入gbk, 内部utf8
+		if useGBKCSV {
+			tabFile.(*CSVFile).Transform(ConvGBKToUTF8)
+		}
+
+	default:
+		report.ReportError("UnknownInputFileExtension", filename)
 	}
+
+	return tabFile
 }
 
-func NewAsyncFileLoader() *AsyncFileLoader {
-	return &AsyncFileLoader{}
+func (self *FileLoader) GetFile(filename string) (TableFile, error) {
+
+	if self.syncLoad {
+
+		result := loadFileByExt(filename, self.UseGBKCSV, self.cacheDir)
+		if err, ok := result.(error); ok {
+			return nil, err
+		}
+
+		return result.(TableFile), nil
+
+	} else {
+		if result, ok := self.fileByName.Load(filename); ok {
+
+			if err, ok := result.(error); ok {
+				return nil, err
+			}
+
+			return result.(TableFile), nil
+
+		} else {
+			return nil, errors.New("not found")
+		}
+	}
+
+}
+
+func NewFileLoader(syncLoad bool, cacheDir string) *FileLoader {
+	return &FileLoader{
+		syncLoad: syncLoad,
+		cacheDir: cacheDir,
+	}
 }

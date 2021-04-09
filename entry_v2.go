@@ -2,28 +2,40 @@ package main
 
 import (
 	"flag"
+	"github.com/davyxu/tabtoy/build"
 	"github.com/davyxu/tabtoy/v2"
 	"github.com/davyxu/tabtoy/v2/i18n"
 	"github.com/davyxu/tabtoy/v2/printer"
 	"os"
 )
 
+// v2特有
+var (
+	paramProtoVersion = flag.Int("protover", 3, "output .proto file version, 2 or 3")
+
+	paramLuaEnumIntValue = flag.Bool("luaenumintvalue", false, "use int type in lua enum value")
+	paramLuaTabHeader    = flag.String("luatabheader", "", "output string to lua tab header")
+
+	paramGenCSharpBinarySerializeCode = flag.Bool("cs_gensercode", true, "generate c# binary serialize code, default is true")
+)
+
 func V2Entry() {
 	g := printer.NewGlobals()
 
-	if *paramLanguage != "" {
-		if !i18n.SetLanguage(*paramLanguage) {
-			log.Infof("language not support: %s", *paramLanguage)
-		}
+	if !i18n.SetLanguage(*paramLanguage) {
+		log.Infof("language not support: %s", *paramLanguage)
+		os.Exit(1)
 	}
 
-	g.Version = Version_v2
+	g.Version = build.Version
 
 	for _, v := range flag.Args() {
 		g.InputFileList = append(g.InputFileList, v)
 	}
 
 	g.ParaMode = *paramPara
+	g.CacheDir = *paramCacheDir
+	g.UseCache = *paramUseCache
 	g.CombineStructName = *paramCombineStructName
 	g.ProtoVersion = *paramProtoVersion
 	g.LuaEnumIntValue = *paramLuaEnumIntValue
@@ -65,6 +77,10 @@ func V2Entry() {
 
 	if *paramTypeOut != "" {
 		g.AddOutputType("type", *paramTypeOut)
+	}
+
+	if *paramModifyList != "" {
+		g.AddOutputType("modlist", *paramModifyList)
 	}
 
 	if !v2.Run(g) {

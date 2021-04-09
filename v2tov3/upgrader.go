@@ -2,6 +2,7 @@ package v2tov3
 
 import (
 	"github.com/davyxu/golexer"
+	"github.com/davyxu/tabtoy/util"
 	"github.com/davyxu/tabtoy/v2tov3/model"
 	"github.com/davyxu/tabtoy/v3/helper"
 	"github.com/tealeg/xlsx"
@@ -12,10 +13,8 @@ import (
 func Upgrade(globals *model.Globals) error {
 
 	var err error
-	globals.TargetTypesSheet, err = globals.AddTable("Type.xlsx", "").AddSheet("Default")
-	if err != nil {
-		return err
-	}
+
+	globals.TargetTypesSheet = globals.AddTable("Type.xlsx")
 
 	helper.WriteTypeTableHeader(globals.TargetTypesSheet)
 
@@ -51,11 +50,15 @@ func WriteOutput(globals *model.Globals) (ret error) {
 
 	globals.TargetTables.VisitAllTable(func(data *helper.MemFileData) bool {
 
-		fullFileName := filepath.Join(globals.OutputDir, data.FileName)
+		fullFileName := filepath.Join(globals.OutputDir, util.ChangeExtension(data.FileName, ".csv"))
 
 		log.Infoln("\t", fullFileName)
 
-		ret = data.File.Save(fullFileName)
+		csvFile := helper.ConvertToCSV(data.File)
+
+		csvFile.(*helper.CSVFile).Transform(helper.ConvUTF8ToGBK)
+
+		ret = csvFile.Save(fullFileName)
 		if ret != nil {
 			return false
 		}
@@ -106,7 +109,8 @@ func loadDatas(globals *model.Globals, sourceFile, targetFile *xlsx.File, tabPra
 }
 
 func loadTable(globals *model.Globals, fileName string) error {
-	sourceFile, err := globals.TableGetter.GetFile(fileName)
+
+	sourceFile, err := xlsx.OpenFile(fileName)
 	if err != nil {
 		return err
 	}

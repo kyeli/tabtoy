@@ -11,6 +11,10 @@ func createOutputTable(symbols *model.TypeTable, inputTab *model.DataTable) *mod
 	outputTab.HeaderType = inputTab.HeaderType
 	outputTab.OriginalHeaderType = inputTab.OriginalHeaderType
 
+	// Merge后的表报错没显示来源文件名, 添加这里
+	outputTab.FileName = inputTab.FileName
+	outputTab.SheetName = inputTab.SheetName
+
 	// 原始表头类型为解析
 	headerFields := symbols.AllFieldByName(inputTab.OriginalHeaderType)
 
@@ -92,9 +96,13 @@ func MergeData(inputList, outputList *model.DataTableList, symbols *model.TypeTa
 					panic("输出单元格找不到")
 				}
 
+				// 切记, V3不支持, 也不能支持默认值
+				// 默认值会导致多表中, 有默认值列才有默认值, 导出数据在不同功能表间会出现歧义
+				// 建议在逻辑层自行处理
+
 				if inputHeader.TypeInfo.IsArray() {
 
-					combineArrayCell(outputCell, inputCell, inputHeader.TypeInfo.ArraySplitter)
+					combineRepeatedCell(outputCell, inputCell, inputHeader, inputTab)
 
 				} else {
 					outputCell.CopyFrom(inputCell)
@@ -105,40 +113,22 @@ func MergeData(inputList, outputList *model.DataTableList, symbols *model.TypeTa
 	}
 }
 
-func combineArrayCell(ouputCell, inputCell *model.Cell, splitter string) {
+func combineRepeatedCell(outputCell, inputCell *model.Cell, inputHeader *model.HeaderField, inputTab *model.DataTable) {
 
-	var sb strings.Builder
+	// 数组列, 单列情况
+	if inputTab.ArrayFieldCount(inputHeader) == 1 {
 
-	var valueCount int
-
-	tail := ouputCell
-
-	// 把之前的格子的值合并为字符串
-	for c := ouputCell.Next; c != nil; c = c.Next {
-
-		tail = c
-
-		if valueCount > 0 {
-			sb.WriteString(splitter)
+		// 不为空时, 切割值为数组
+		if inputCell.Value != "" {
+			for _, element := range strings.Split(inputCell.Value, inputHeader.TypeInfo.ArraySplitter) {
+				outputCell.ValueList = append(outputCell.ValueList, element)
+			}
 		}
 
-		sb.WriteString(c.Value)
-		valueCount++
+	} else {
+
+		// 数组列, 多列情况, 每列添加到单元格
+		outputCell.ValueList = append(outputCell.ValueList, inputCell.Value)
 	}
-
-	for _, value := range strings.Split(inputCell.Value, splitter) {
-
-		if valueCount > 0 {
-			sb.WriteString(splitter)
-		}
-
-		sb.WriteString(value)
-		valueCount++
-	}
-
-	ouputCell.Value = sb.String()
-
-	tail.Next = &model.Cell{}
-	tail.Next.CopyFrom(inputCell)
 
 }

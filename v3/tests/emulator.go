@@ -26,10 +26,9 @@ func NewTableEmulator(t *testing.T) *TableEmulator {
 
 	globals := model.NewGlobals()
 	globals.Version = "testver"
-	globals.IndexFile = "Index.xlsx"
+	globals.IndexFile = "Index"
 	globals.PackageName = "main"
-	globals.CombineStructName = "Config"
-	globals.Para = false
+	globals.CombineStructName = "Table"
 
 	memfile := helper.NewMemFile()
 
@@ -77,7 +76,7 @@ func (self *TableEmulator) VerifyType(expectJson string) {
 		return
 	}
 
-	appJson := self.G.Types.ToJSON(false)
+	appJson := self.G.Types.ToJSON()
 
 	if expectJson == "" {
 		return
@@ -176,6 +175,8 @@ func (self *TableEmulator) VerifyGoTypeAndJson(expectJson string) {
 	var appJson []byte
 	appJson, err = compileLauncher(filepath.Join(dir, "launcher.go"), configFileName, tableFileName)
 	if err != nil {
+		self.T.Log(string(appJson))
+		self.T.FailNow()
 		return
 	}
 
@@ -191,7 +192,7 @@ func (self *TableEmulator) VerifyGoTypeAndJson(expectJson string) {
 	}
 }
 
-func genFile(globals *model.Globals, filename string, genFunc gen.GenFunc) error {
+func genFile(globals *model.Globals, filename string, genFunc gen.GenSingleFile) error {
 
 	data, err := genFunc(globals)
 

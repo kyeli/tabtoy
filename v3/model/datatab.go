@@ -20,6 +20,19 @@ type DataTable struct {
 	Headers []*HeaderField
 }
 
+// 重复列在表中的索引, 相对于重复列的数量
+func (self *DataTable) ArrayFieldCount(field *HeaderField) (ret int) {
+
+	for _, hf := range self.Headers {
+		if hf.TypeInfo != nil && hf.TypeInfo.FieldName == field.TypeInfo.FieldName {
+
+			ret++
+		}
+	}
+
+	return
+}
+
 // 模板用，排除表头的数据索引
 func (self *DataTable) DataRowIndex() (ret []int) {
 

@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"github.com/davyxu/tabtoy/v3/checker"
+	"github.com/davyxu/tabtoy/v3/helper"
 	"github.com/davyxu/tabtoy/v3/model"
 	"github.com/davyxu/tabtoy/v3/report"
 )
@@ -28,6 +30,22 @@ func Compile(globals *model.Globals) (ret error) {
 		return err
 	}
 
+	// 测试时, 这个Getter会被提前设置为MemFile, 普通导出时, 这个Getter为空
+	if globals.TableGetter == nil {
+		tabLoader := helper.NewFileLoader(!globals.ParaLoading, globals.CacheDir)
+		tabLoader.UseGBKCSV = globals.UseGBKCSV
+
+		if globals.ParaLoading {
+			for _, pragma := range globals.IndexList {
+				tabLoader.AddFile(pragma.TableFileName)
+			}
+
+			tabLoader.Commit()
+		}
+
+		globals.TableGetter = tabLoader
+	}
+
 	var kvList, dataList model.DataTableList
 
 	// 加载多种表
@@ -38,7 +56,8 @@ func Compile(globals *model.Globals) (ret error) {
 	}
 
 	report.Log.Debugln("Checking types...")
-	CheckTypeTable(globals.Types)
+	checker.CheckType(globals.Types)
+	checker.PreCheck(&dataList)
 
 	if kvList.Count() > 0 {
 		report.Log.Debugln("Merge key-value tables...")
@@ -54,12 +73,15 @@ func Compile(globals *model.Globals) (ret error) {
 		}
 	}
 
+	// KV转置后, 再检查一次
+	checker.CheckType(globals.Types)
+
 	report.Log.Debugln("Merge data tables...")
 
 	// 合并所有的数据表
 	MergeData(&dataList, &globals.Datas, globals.Types)
 
-	CheckRepeat(&globals.Datas)
+	checker.PostCheck(globals)
 
 	return nil
 }

@@ -3,6 +3,7 @@ package compiler
 import (
 	"github.com/davyxu/tabtoy/v3/model"
 	"github.com/davyxu/tabtoy/v3/report"
+	"strings"
 )
 
 func transposeKVtoData(symbols *model.TypeTable, kvtab *model.DataTable) (ret *model.DataTable) {
@@ -28,15 +29,27 @@ func transposeKVtoData(symbols *model.TypeTable, kvtab *model.DataTable) (ret *m
 
 		arraySplitter := kvtab.GetValueByName(row, "数组切割")
 
+		tags := kvtab.GetValueByName(row, "标记")
+
 		var tf model.TypeDefine
 		tf.Kind = model.TypeUsage_HeaderStruct
 		tf.ObjectType = kvtab.HeaderType
 
 		tf.Name = name.Value
 
+		if !model.PrimitiveExists(fieldType.Value) && !symbols.ObjectExists(fieldType.Value) { // 对象检查
+			report.ReportError("UnknownFieldType", fieldType.Value, fieldType.String())
+		}
+
 		tf.FieldName = fieldName.Value
 		tf.FieldType = fieldType.Value
 		tf.ArraySplitter = arraySplitter.Value
+
+		// 将KV表的Tags转换过去
+		if tags != nil && tags.Value != "" {
+			tagsType := kvtab.HeaderByName("标记")
+			tf.Tags = strings.Split(tags.Value, tagsType.TypeInfo.ArraySplitter)
+		}
 
 		if symbols.FieldByName(tf.ObjectType, tf.FieldName) != nil {
 			report.ReportError("DuplicateKVField", fieldName.String())
